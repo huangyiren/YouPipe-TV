@@ -14,15 +14,23 @@ class _Key {
   final String? action; // null: types [label]
 }
 
-/// The Search screen's keyboard, laid out like YouTube's on TV: letters in a 7-column grid, then Space, delete and
-/// 123, then Clear and Search. One stop for the remote; the arrows move between keys and leave it at its edges.
+/// 搜尋頁面的鍵盤：上方為支援系統輸入法（中文/語音/手機輸入）的輸入框，
+/// 下方為 7 欄式 TV 虛擬鍵盤（空白、退格、123、清除、搜尋）。
 class TvKeyboard extends StatefulWidget {
-  const TvKeyboard({super.key, required this.text, required this.onChanged, required this.onSubmit, this.focusNode});
+  const TvKeyboard({
+    super.key,
+    required this.text,
+    required this.onChanged,
+    required this.onSubmit,
+    this.focusNode,
+    this.inputFocusNode,
+  });
 
   final String text;
   final ValueChanged<String> onChanged;
   final ValueChanged<String> onSubmit;
   final FocusNode? focusNode;
+  final FocusNode? inputFocusNode;
 
   @override
   State<TvKeyboard> createState() => _TvKeyboardState();
@@ -33,21 +41,45 @@ class _TvKeyboardState extends State<TvKeyboard> {
   static const _symbols = ['1234567', '890&#()', '@!?:~.,', r'/$%+=_"'];
   static const _cell = 80.0;
   static const _gapSize = 8.0;
+  static const double _keyboardWidth = 7 * _cell + 6 * _gapSize; // 608.0
+
+  late final TextEditingController _controller;
+  late final FocusNode _internalInputFocus;
+  FocusNode get _inputFocus => widget.inputFocusNode ?? _internalInputFocus;
 
   bool _symbolMode = false;
   int _row = 0;
   int _col = 0; // key index within the row
   bool _focused = false;
+  bool _inputFocused = false;
   late final _select = SelectHandler(_press, null);
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.text);
+    _internalInputFocus = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(covariant TvKeyboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_controller.text != widget.text) {
+      _controller.value = TextEditingValue(
+        text: widget.text,
+        selection: TextSelection.collapsed(offset: widget.text.length),
+      );
+    }
+  }
 
   List<List<_Key>> get _rows => [
     for (final r in (_symbolMode ? _symbols : _letters)) [for (final c in r.split('')) _Key(c, 1)],
     [
-      const _Key('Space', 3, icon: Icons.space_bar, action: 'space'),
+      const _Key('空白', 3, icon: Icons.space_bar, action: 'space'),
       const _Key('', 2, icon: Icons.backspace_outlined, action: 'back'),
       _Key(_symbolMode ? 'ABC' : '123', 2, action: 'mode'),
     ],
-    [const _Key('Clear', 2, action: 'clear'), const _Key('Search', 5, icon: Icons.search, action: 'search')],
+    [const _Key('清除', 2, action: 'clear'), const _Key('搜尋', 5, icon: Icons.search, action: 'search')],
   ];
 
   int _startColumn(List<_Key> row, int index) => row.take(index).fold(0, (a, k) => a + k.span);
@@ -95,9 +127,13 @@ class _TvKeyboardState extends State<TvKeyboard> {
         setState(() => _col++);
         return KeyEventResult.handled;
       }
-      if (k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.arrowDown) {
-        final to = _row + (k == LogicalKeyboardKey.arrowUp ? -1 : 1);
-        if (to < 0 || to >= rows.length) return KeyEventResult.ignored;
+      if (k == LogicalKeyboardKey.arrowUp) {
+        if (_row == 0) {
+          // 在第一排按上方向鍵，將焦點移到上方的系統中文輸入框
+          _inputFocus.requestFocus();
+          return KeyEventResult.handled;
+        }
+        final to = _row - 1;
         final column = _startColumn(rows[_row], _col);
         setState(() {
           _col = _keyAt(rows[to], column);
@@ -105,7 +141,17 @@ class _TvKeyboardState extends State<TvKeyboard> {
         });
         return KeyEventResult.handled;
       }
-      // A real keyboard types too.
+      if (k == LogicalKeyboardKey.arrowDown) {
+        if (_row >= rows.length - 1) return KeyEventResult.ignored;
+        final to = _row + 1;
+        final column = _startColumn(rows[_row], _col);
+        setState(() {
+          _col = _keyAt(rows[to], column);
+          _row = to;
+        });
+        return KeyEventResult.handled;
+      }
+      // 實體鍵盤直接輸入
       final ch = e.character;
       if (ch != null && ch.length == 1 && ch.codeUnitAt(0) >= 32 && !isSelectKey(k)) {
         widget.onChanged('${widget.text}$ch');
@@ -122,55 +168,90 @@ class _TvKeyboardState extends State<TvKeyboard> {
   @override
   void dispose() {
     _select.dispose();
+    _controller.dispose();
+    _internalInputFocus.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final rows = _rows;
-    return Focus(
-      focusNode: widget.focusNode,
-      onFocusChange: (f) => setState(() => _focused = f),
-      onKeyEvent: _onKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 7 * _cell + 6 * _gapSize,
-            height: 80,
-            margin: const EdgeInsets.only(bottom: 28),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Color(0xFF555555), width: 3)),
-            ),
-            alignment: Alignment.centerLeft,
-            child: Text(
-              widget.text.isEmpty ? 'Search YouTube' : '${widget.text}|',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 42, color: widget.text.isEmpty ? const Color(0xFF777777) : Tv.text),
-            ),
-          ),
-          for (var r = 0; r < rows.length; r++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: _gapSize),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (var i = 0; i < rows[r].length; i++) ...[
-                    if (i > 0) const SizedBox(width: _gapSize),
-                    _keyView(rows[r][i], _focused && r == _row && i == _col, () {
-                      setState(() {
-                        _row = r;
-                        _col = i;
-                      });
-                      _press();
-                    }),
-                  ],
-                ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 支援系統中文輸入法、語音與手機遙控輸入的原生 TextField
+        Container(
+          width: _keyboardWidth,
+          height: 80,
+          margin: const EdgeInsets.only(bottom: 28),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: _inputFocused ? const Color(0x18FFFFFF) : Colors.transparent,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+            border: Border(
+              bottom: BorderSide(
+                color: _inputFocused ? Tv.focusBg : const Color(0xFF555555),
+                width: _inputFocused ? 4 : 3,
               ),
             ),
-        ],
-      ),
+          ),
+          alignment: Alignment.centerLeft,
+          child: Row(
+            children: [
+              Icon(Icons.keyboard, size: 32, color: _inputFocused ? Tv.focusBg : const Color(0xFF777777)),
+              const SizedBox(width: 14),
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _inputFocus,
+                  onChanged: widget.onChanged,
+                  onSubmitted: widget.onSubmit,
+                  textInputAction: TextInputAction.search,
+                  cursorColor: Tv.focusBg,
+                  style: const TextStyle(fontSize: 36, color: Tv.text),
+                  decoration: const InputDecoration(
+                    hintText: '搜尋 YouTube（支援中文輸入）',
+                    hintStyle: TextStyle(fontSize: 30, color: Color(0xFF777777)),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // 下方 7 欄式 TV 虛擬鍵盤
+        Focus(
+          focusNode: widget.focusNode,
+          onFocusChange: (f) => setState(() => _focused = f),
+          onKeyEvent: _onKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var r = 0; r < rows.length; r++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: _gapSize),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < rows[r].length; i++) ...[
+                        if (i > 0) const SizedBox(width: _gapSize),
+                        _keyView(rows[r][i], _focused && r == _row && i == _col, () {
+                          setState(() {
+                            _row = r;
+                            _col = i;
+                          });
+                          _press();
+                        }),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
