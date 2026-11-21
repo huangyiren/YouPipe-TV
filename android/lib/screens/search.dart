@@ -11,8 +11,6 @@ import '../ui/focusable.dart';
 import '../ui/keyboard.dart';
 import '../ui/theme.dart';
 
-/// Search, like YouTube on TV: the keyboard on the left; suggestions (or recent searches) on the right while
-/// typing, and the results there after a search.
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
@@ -21,11 +19,13 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
+  final _inputFocus = FocusNode();
   final _keyboard = FocusNode();
   final _results = FocusNode();
   String _text = '';
   List<String> _suggestions = const [];
   bool _showingResults = false;
+  bool _isRecent = true;
   String _heading = '';
   List<YtItem> _items = const [];
   String? _token;
@@ -37,12 +37,13 @@ class _SearchScreenState extends State<SearchScreen> {
   void initState() {
     super.initState();
     _onChanged('');
-    WidgetsBinding.instance.addPostFrameCallback((_) => _keyboard.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _inputFocus.requestFocus());
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _inputFocus.dispose();
     _keyboard.dispose();
     _results.dispose();
     super.dispose();
@@ -55,7 +56,8 @@ class _SearchScreenState extends State<SearchScreen> {
       _text = text;
       _showingResults = false;
       if (text.trim().isEmpty) {
-        _heading = 'Recent searches';
+        _isRecent = true;
+        _heading = '近期搜尋';
         _suggestions = Library.instance.searches();
       }
     });
@@ -65,7 +67,8 @@ class _SearchScreenState extends State<SearchScreen> {
         final list = await Services.yt.suggestions(text);
         if (mounted && seq == _seq) {
           setState(() {
-            _heading = 'Suggestions';
+            _isRecent = false;
+            _heading = '搜尋建議';
             _suggestions = list.take(10).toList();
           });
         }
@@ -81,11 +84,11 @@ class _SearchScreenState extends State<SearchScreen> {
     _debounce?.cancel();
     final seq = ++_seq;
     Library.instance.addSearch(query);
-    final fromSuggestions = !_keyboard.hasFocus;
+    final fromSuggestions = !_keyboard.hasFocus && !_inputFocus.hasFocus;
     setState(() {
       _text = query;
       _showingResults = true;
-      _heading = 'Searching for “$query”…';
+      _heading = '正在搜尋「$query」…';
       _items = const [];
     });
     try {
@@ -95,14 +98,13 @@ class _SearchScreenState extends State<SearchScreen> {
       setState(() {
         _items = items;
         _token = page.continuation;
-        _heading = items.isEmpty ? 'No results for “$query”' : 'Results for “$query”';
+        _heading = items.isEmpty ? '找不到「$query」的相關結果' : '「$query」的搜尋結果';
       });
-      // From a suggestion, focus moves to the results; from the keyboard's Search key it stays.
       if (fromSuggestions && items.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _results.requestFocus());
       }
     } catch (e) {
-      if (mounted) setState(() => _heading = "Couldn't search: $e");
+      if (mounted) setState(() => _heading = '搜尋失敗：$e');
     }
   }
 
@@ -125,17 +127,22 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) => PopScope(
-    // From the results, Back returns to the keyboard first.
     canPop: !_results.hasFocus,
     onPopInvokedWithResult: (didPop, _) {
-      if (!didPop) _keyboard.requestFocus();
+      if (!didPop) _inputFocus.requestFocus();
     },
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(Tv.pad, 72, 0, 0),
-          child: TvKeyboard(text: _text, focusNode: _keyboard, onChanged: _onChanged, onSubmit: _run),
+          child: TvKeyboard(
+            text: _text,
+            focusNode: _keyboard,
+            inputFocusNode: _inputFocus,
+            onChanged: _onChanged,
+            onSubmit: _run,
+          ),
         ),
         Expanded(
           child: ListView(
@@ -166,7 +173,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       child: Row(
                         children: [
                           Icon(
-                            _heading == 'Recent searches' ? Icons.history : Icons.search,
+                            _isRecent ? Icons.history : Icons.search,
                             size: 32,
                             color: focused ? Tv.focusFg : Tv.text2,
                           ),
