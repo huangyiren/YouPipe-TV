@@ -22,6 +22,17 @@ jobs:
           flutter-version: '3.50.1'
           cache: true
 
+      - name: Auto Format Dart Code
+        working-directory: android
+        run: dart format -l 120 lib test
+
+      - name: Commit Formatted Code
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@://github.com"
+          git add android/lib android/test
+          git diff --staged --quiet || (git commit -m "Auto format code" && git push)
+
       - name: Build APK
         working-directory: android
         run: |
@@ -36,5 +47,5 @@ jobs:
         with:
           tag_name: v1.0.6-zh
           name: YouPipe TV 繁體中文版 v1.0.6
-          body: 支援繁體中文介面與系統中文／語音輸入。
+          body: 支援繁體中文介面、台灣地區與系統中文／語音輸入。
           files: YouPipe-TV-v1.0.6-zh-TW.apk
