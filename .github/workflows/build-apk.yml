@@ -22,6 +22,76 @@ jobs:
           flutter-version: '3.50.1'
           cache: true
 
+      - name: Fix watch.dart safely
+        working-directory: android
+        run: |
+          curl -sL https://githubusercontent.com -o lib/screens/watch.dart
+          python3 -c '
+          p = "lib/screens/watch.dart"
+          s = open(p).read()
+          old = """    if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {
+                _hideControls();
+                return KeyEventResult.handled;
+              }"""
+          new = """    if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {
+                _hideControls();
+                return KeyEventResult.handled;
+              }
+              if (k == LogicalKeyboardKey.arrowDown && _bar.hasFocus) {
+                _playButton.requestFocus();
+                return KeyEventResult.handled;
+              }
+              if (k == LogicalKeyboardKey.arrowUp && !_bar.hasFocus && !_upNextFocused) {
+                if (FocusManager.instance.primaryFocus?.focusInDirection(TraversalDirection.up) != true) {
+                  _bar.requestFocus();
+                }
+                return KeyEventResult.handled;
+              }"""
+          assert old in s, "Pattern not found"
+          s = s.replace(old, new, 1)
+          subs = [
+              ("Resuming from ", "繼續播放位置 "),
+              ("Toast.show(\x27Skipped ${s.category.label.toLowerCase()}\x27)", "Toast.show(\x27已略過贊助片段\x27)"),
+              ("Toast.show(\"Couldn\x27t load captions\")", "Toast.show(\x27無法載入字幕\x27)"),
+              ("Toast.show(\x27No captions for this video\x27)", "Toast.show(\x27此影片沒有提供字幕\x27)"),
+              ("title: \x27Captions\x27", "title: \x27字幕\x27"),
+              ("PanelItem(\x27Off\x27", "PanelItem(\x27關閉\x27"),
+              ("title: \x27Settings\x27", "title: \x27播放設定\x27"),
+              ("\x27Quality\x27", "\x27畫質\x27"),
+              ("\x27Playback speed\x27", "\x27播放速度\x27"),
+              ("\x27Normal\x27", "\x27正常\x27"),
+              ("\x27Captions\x27", "\x27字幕\x27"),
+              ("\x27Autoplay\x27", "\x27自動播放\x27"),
+              ("? \x27On\x27 : \x27Off\x27", "? \x27開啟\x27 : \x27關閉\x27"),
+              ("_PanelHeading(\x27Chapters\x27)", "_PanelHeading(\x27章節\x27)"),
+              ("_PanelHeading(\x27Description\x27)", "_PanelHeading(\x27資訊欄\x27)"),
+              ("[\x27No description\x27]", "[\x27無影片說明\x27]"),
+              ("title: \x27Comments\x27", "title: \x27留言\x27"),
+              ("\"Couldn\x27t play this video. ", "\"無法播放此影片。"),
+              (" subscribers\x27", " 位訂閱者\x27"),
+              (" watching\x27", " 人正在觀看\x27"),
+              ("live ? \x27LIVE\x27", "live ? \x27直播\x27"),
+              ("Up next in ", "接下來播放："),
+              ("\x27this playlist\x27", "\x27此播放清單\x27"),
+              (": \x27Up next\x27", ": \x27接下來播放\x27"),
+              (": \x27Like\x27", ": \x27喜歡\x27"),
+              ("\x27Added to Liked videos\x27", "\x27已加入喜歡的影片\x27"),
+              ("\x27Removed from Liked videos\x27", "\x27已從喜歡的影片移除\x27"),
+              ("\x27Estimated by Return YouTube Dislike\x27", "\x27資料來自 Return YouTube Dislike 預估\x27"),
+              ("? \x27Saved\x27 : \x27Save\x27", "? \x27已儲存\x27 : \x27稍後觀看\x27"),
+              ("\x27Saved to Watch later\x27", "\x27已儲存至稍後觀看\x27"),
+              ("\x27Removed from Watch later\x27", "\x27已從稍後觀看移除\x27"),
+              ("? \x27Subscribed\x27 : \x27Subscribe\x27", "? \x27已訂閱\x27 : \x27訂閱\x27"),
+              ("Up next in ${_countdown ?? 0}", "${_countdown ?? 0} 秒後播放下一部影片"),
+              ("OK plays it now • Back cancels", "按確認鍵立即播放 • 按返回鍵取消"),
+              ("\x27Loading…\x27 : \x27No comments\x27", "\x27載入留言中…\x27 : \x27目前沒有留言\x27"),
+              (" replies\x27", " 則回覆\x27"),
+          ]
+          for a, b in subs:
+              s = s.replace(a, b)
+          open(p, "w").write(s)
+          '
+
       - name: Auto Format Dart Code
         working-directory: android
         run: dart format -l 120 lib test
@@ -31,7 +101,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@://github.com"
           git add android/lib android/test
-          git diff --staged --quiet || (git commit -m "Auto format code" && git push)
+          git diff --staged --quiet || (git commit -m "Fix watch.dart and format" && git push)
 
       - name: Build APK
         working-directory: android
@@ -47,5 +117,5 @@ jobs:
         with:
           tag_name: v1.0.6-zh
           name: YouPipe TV 繁體中文版 v1.0.6
-          body: 支援繁體中文介面、台灣地區與系統中文／語音輸入。
+          body: 支援繁體中文介面、台灣地區、系統中文／語音輸入與完整遙控器焦點導航。
           files: YouPipe-TV-v1.0.6-zh-TW.apk
