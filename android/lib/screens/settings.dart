@@ -8,8 +8,7 @@ import '../ui/overlay.dart';
 import '../ui/theme.dart';
 import '../ui/updates.dart';
 
-/// Settings: a list; each row opens its choices in a side panel, like YouTube on TV. The same settings as the
-/// Samsung app.
+/// 設定頁面：採用側邊面板展開選項，與電視版 YouTube 操作體驗一致。
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -19,7 +18,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   static const _qualities = <(Object, String)>[
-    ('auto', 'Auto (up to 1080p)'),
+    ('auto', '自動（最高 1080p）'),
     (1080, '1080p'),
     (720, '720p'),
     (480, '480p'),
@@ -27,33 +26,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ];
   static const _speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
   static const _regions = <(String, String)>[
-    ('US', 'United States'),
-    ('GB', 'United Kingdom'),
-    ('IE', 'Ireland'),
-    ('IN', 'India'),
-    ('CA', 'Canada'),
-    ('AU', 'Australia'),
-    ('DE', 'Germany'),
-    ('FR', 'France'),
-    ('ES', 'Spain'),
-    ('IT', 'Italy'),
-    ('NL', 'Netherlands'),
-    ('BR', 'Brazil'),
-    ('MX', 'Mexico'),
-    ('JP', 'Japan'),
-    ('KR', 'South Korea'),
-    ('AE', 'United Arab Emirates'),
+    ('TW', '台灣'),
+    ('HK', '香港'),
+    ('SG', '新加坡'),
+    ('JP', '日本'),
+    ('KR', '南韓'),
+    ('US', '美國'),
+    ('GB', '英國'),
+    ('IE', '愛爾蘭'),
+    ('IN', '印度'),
+    ('CA', '加拿大'),
+    ('AU', '澳洲'),
+    ('DE', '德國'),
+    ('FR', '法國'),
+    ('ES', '西班牙'),
+    ('IT', '義大利'),
+    ('NL', '荷蘭'),
+    ('BR', '巴西'),
+    ('MX', '墨西哥'),
+    ('AE', '阿拉伯聯合大公國'),
   ];
   static const _languages = <(String?, String)>[
-    (null, 'Same as the TV'),
-    ('en', 'English'),
+    ('zh-TW', '繁體中文'),
+    ('zh-CN', '簡體中文'),
+    (null, '與電視系統相同'),
+    ('en', 'English（英文）'),
+    ('ja', '日本語（日文）'),
+    ('ko', '한국어（韓文）'),
     ('de', 'Deutsch'),
     ('es', 'Español'),
     ('fr', 'Français'),
     ('hi', 'हिन्दी'),
     ('it', 'Italiano'),
-    ('ja', '日本語'),
-    ('ko', '한국어'),
     ('ml', 'മലയാളം'),
     ('nl', 'Nederlands'),
     ('pt', 'Português'),
@@ -92,17 +96,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final actions = Settings.instance.sbActions;
     showPanel(
       context,
-      title: 'SponsorBlock categories',
-      subtitle: 'What to do with each kind of segment',
+      title: 'SponsorBlock 片段分類',
+      subtitle: '設定遇到各類廣告／贊助片段時的處理方式',
       items: [
         for (final c in SbCategory.all)
           PanelItem(
             c.label,
             color: c.color,
-            value: const {'skip': 'Skip', 'show': 'Show on the bar', 'off': 'Off'}[actions[c.key] ?? c.action],
+            value: const {'skip': '自動跳過', 'show': '在進度條標示', 'off': '關閉'}[actions[c.key] ?? c.action],
             onSelect: () => _choose<String>(
               c.label,
-              const [('skip', 'Skip'), ('show', 'Show on the bar'), ('off', 'Off')],
+              const [('skip', '自動跳過'), ('show', '在進度條標示'), ('off', '關閉')],
               actions[c.key] ?? c.action,
               (a) => Settings.instance.set('sbActions', {...Settings.instance.sbActions, c.key: a}),
             ),
@@ -112,17 +116,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _checkUpdates() async {
-    Toast.show('Checking for updates…');
+    Toast.show('正在檢查更新…');
     try {
       final latest = await Updates.check(force: true);
       if (!mounted) return;
       if (Updates.isNewer(latest, Updates.version)) {
         offerUpdate(context, latest);
       } else {
-        Toast.show('YouPipe is up to date (${Updates.version})');
+        Toast.show('YouPipe 已是最新版本（${Updates.version}）');
       }
     } catch (e) {
-      Toast.show("Couldn't check for updates: $e");
+      Toast.show('無法檢查更新：$e');
     }
   }
 
@@ -130,92 +134,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final s = Settings.instance;
     final lib = Library.instance;
-    String onOff(bool v) => v ? 'On' : 'Off';
+    String onOff(bool v) => v ? '開啟' : '關閉';
     final rows = <Object>[
-      'Playback',
+      '播放設定',
       PanelItem(
-        'Video quality',
+        '影片畫質',
         value: _label<Object>(_qualities, s['quality'] ?? 'auto'),
         onSelect: () =>
-            _choose<Object>('Video quality', _qualities, s['quality'] ?? 'auto', (v) => s.set('quality', v)),
+            _choose<Object>('影片畫質', _qualities, s['quality'] ?? 'auto', (v) => s.set('quality', v)),
       ),
-      PanelItem('Autoplay next video', value: onOff(s.autoplay), onSelect: () => s.set('autoplay', !s.autoplay)),
+      PanelItem('自動播放下一部影片', value: onOff(s.autoplay), onSelect: () => s.set('autoplay', !s.autoplay)),
       PanelItem(
-        'Captions',
+        '預設開啟字幕',
         value: onOff(s['captions'] == true),
         onSelect: () => s.set('captions', s['captions'] != true),
       ),
       PanelItem(
-        'Caption language',
+        '字幕語言',
         value: _label<String?>(_languages, s['captionLang'] as String?),
         onSelect: () => _choose<String?>(
-          'Caption language',
+          '字幕語言',
           _languages,
           s['captionLang'] as String?,
           (v) => s.set('captionLang', v),
         ),
       ),
       PanelItem(
-        'Playback speed',
-        value: s.speed == 1 ? 'Normal' : '${s.speed}×',
+        '播放速度',
+        value: s.speed == 1 ? '正常' : '${s.speed}×',
         onSelect: () => _choose<double>(
-          'Playback speed',
-          [for (final v in _speeds) (v, v == 1 ? 'Normal' : '$v×')],
+          '播放速度',
+          [for (final v in _speeds) (v, v == 1 ? '正常' : '$v×')],
           s.speed,
           (v) => s.set('speed', v),
         ),
       ),
-      'Extras',
+      '擴充功能',
       PanelItem(
-        'SponsorBlock: skip sponsors and more',
-        sub: 'Community segments from sponsor.ajay.app',
+        'SponsorBlock：跳過贊助與業配片段',
+        sub: '使用 sponsor.ajay.app 社群標記資料',
         value: onOff(s.sponsorBlock),
         onSelect: () => s.set('sponsorBlock', !s.sponsorBlock),
       ),
-      if (s.sponsorBlock) PanelItem('Categories', onSelect: _sponsorBlockCategories),
+      if (s.sponsorBlock) PanelItem('片段分類設定', onSelect: _sponsorBlockCategories),
       PanelItem(
-        'Return YouTube Dislike',
-        sub: 'Estimated dislike counts from returnyoutubedislike.com',
+        'Return YouTube Dislike（顯示倒讚數）',
+        sub: '顯示來自 returnyoutubedislike.com 的預估倒讚數量',
         value: onOff(s.dislikes),
         onSelect: () => s.set('dislikes', !s.dislikes),
       ),
-      'Content',
+      '內容與地區',
       PanelItem(
-        'Region',
-        sub: 'The country YouTube picks videos for',
+        '地區',
+        sub: 'YouTube 推薦影片所依據的國家／地區',
         value: _label<String>(_regions, s.gl),
-        onSelect: () => _choose<String>('Region', _regions, s.gl, (v) => s.set('gl', v)),
+        onSelect: () => _choose<String>('地區', _regions, s.gl, (v) => s.set('gl', v)),
       ),
       PanelItem(
-        'Language',
-        sub: 'The language of titles and dates from YouTube',
+        '內容語言',
+        sub: 'YouTube 影片標題與時間顯示的語言',
         value: _label<String?>(_languages, s['hl'] as String?),
-        onSelect: () => _choose<String?>('Language', _languages, s['hl'] as String?, (v) => s.set('hl', v)),
+        onSelect: () => _choose<String?>('內容語言', _languages, s['hl'] as String?, (v) => s.set('hl', v)),
       ),
-      'Privacy',
+      '隱私權',
       PanelItem(
-        'Clear watch history',
-        value: '${lib.history().length} videos',
-        onSelect: () => showConfirm(context, 'Clear watch history?', 'Clear', () => lib.clear('history')),
+        '清除觀看紀錄',
+        value: '${lib.history().length} 部影片',
+        onSelect: () => showConfirm(context, '確定要清除觀看紀錄嗎？', '清除', () => lib.clear('history')),
       ),
       PanelItem(
-        'Clear search history',
-        value: '${lib.searches().length} searches',
-        onSelect: () => showConfirm(context, 'Clear search history?', 'Clear', () => lib.clear('searches')),
+        '清除搜尋紀錄',
+        value: '${lib.searches().length} 筆搜尋',
+        onSelect: () => showConfirm(context, '確定要清除搜尋紀錄嗎？', '清除', () => lib.clear('searches')),
       ),
-      'About',
+      '關於',
       PanelItem(
-        'Version',
-        sub: Updates.available.value == null ? 'Check for updates' : 'Version ${Updates.available.value} is available',
+        '版本',
+        sub: Updates.available.value == null ? '點選檢查更新' : '有新版本 ${Updates.available.value} 可供更新',
         value: Updates.version,
         onSelect: _checkUpdates,
       ),
-      PanelItem('Source code', value: 'github.com/${Updates.repo}'),
+      PanelItem('原始碼倉庫', value: 'github.com/${Updates.repo}'),
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(Tv.pad, 120, Tv.pad, 400),
       children: [
-        const Text('Settings', style: Tv.pageTitle),
+        const Text('設定', style: Tv.pageTitle),
         const SizedBox(height: 32),
         for (final r in rows)
           if (r is String)
