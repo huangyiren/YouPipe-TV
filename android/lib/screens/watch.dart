@@ -19,11 +19,7 @@ import '../ui/overlay.dart';
 import '../ui/shell.dart';
 import '../ui/theme.dart';
 
-/// The player screen, like YouTube on TV (docs/ui.md):
-/// - The video fills the screen. OK, Up or Down shows the controls; Left/Right seek straight away with a preview.
-/// - Controls: title and channel at the top; the seek bar (storyboard preview, chapters, SponsorBlock segments); a
-///   row of buttons; and below it Up next (the queue, or related videos) as a grid, 3 across.
-/// - Back hides the controls, then leaves the player.
+/// 播放器畫面：全螢幕播放影片，按確認鍵或上下鍵顯示控制列；左右鍵直接快轉/倒轉並顯示預覽；返回鍵隱藏控制列或離開播放器。
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key, required this.video, this.queue});
 
@@ -32,7 +28,7 @@ class WatchScreen extends StatefulWidget {
 
   static _WatchScreenState? _current;
 
-  /// Plays [video]; when the player is already open, it plays there.
+  /// 播放 [video]；若播放器已開啟則直接在其中切換播放。
   static void open(BuildContext context, VideoItem video, {PlayQueue? queue}) {
     final current = _current;
     if (current != null && current.mounted) {
@@ -124,7 +120,7 @@ class _WatchScreenState extends State<WatchScreen> {
   VideoPlayerController? get _c => _player.controller.value;
   VideoInfo? get _info => _player.info.value;
 
-  // Loading ------------------------------------------------------------------------------------------------------
+  // 載入與播放 ------------------------------------------------------------------------------------------------------
 
   Future<void> _play(VideoItem video, {PlayQueue? queue}) async {
     _saveProgress();
@@ -142,7 +138,6 @@ class _WatchScreenState extends State<WatchScreen> {
       _countdown = null;
       _scrubTo = null;
       _completedHandled = false;
-      // Up next leaves with its old cards; the controls drop back down for the new video.
       _upNextFocused = false;
       _slide = 0;
     });
@@ -163,7 +158,7 @@ class _WatchScreenState extends State<WatchScreen> {
       speed: Settings.instance.speed,
     );
     if (!ok || !mounted || _item.id != video.id) return;
-    if (resume > Duration.zero) Toast.show('Resuming from ${formatDuration(resume)}');
+    if (resume > Duration.zero) Toast.show('從 ${formatDuration(resume)} 繼續播放');
     final info = _info;
     if (info != null) {
       _item = VideoItem(
@@ -219,13 +214,12 @@ class _WatchScreenState extends State<WatchScreen> {
     Library.instance.saveProgress(_item, pos, c.value.duration.inSeconds);
   }
 
-  // Playback events ----------------------------------------------------------------------------------------------
+  // 播放事件 ------------------------------------------------------------------------------------------------------
 
   void _onTick() {
     final c = _c;
     if (c == null || !mounted) return;
     final v = c.value;
-    // SponsorBlock: skip each "skip" segment once.
     for (final s in _segments) {
       if (s.category.currentAction == 'skip' &&
           !_skipped.contains(s) &&
@@ -233,7 +227,7 @@ class _WatchScreenState extends State<WatchScreen> {
           v.position < s.end - const Duration(milliseconds: 500)) {
         _skipped.add(s);
         c.seekTo(s.end);
-        Toast.show('Skipped ${s.category.label.toLowerCase()}');
+        Toast.show('已略過贊助片段');
         break;
       }
     }
@@ -255,7 +249,6 @@ class _WatchScreenState extends State<WatchScreen> {
       return;
     }
     if (!Settings.instance.autoplay) return _showControls(focusPlay: true);
-    // YouTube's countdown before the next video.
     setState(() {
       _countdown = 5;
       _controls = false;
@@ -277,7 +270,7 @@ class _WatchScreenState extends State<WatchScreen> {
     _showControls(focusPlay: true);
   }
 
-  // Queue ----------------------------------------------------------------------------------------------------------
+  // 播放佇列 ------------------------------------------------------------------------------------------------------
 
   VideoItem? _nextItem() {
     final q = _queue;
@@ -313,99 +306,996 @@ class _WatchScreenState extends State<WatchScreen> {
     _play(q.items[q.index], queue: q);
   }
 
-  // Controls ---------------------------------------------------------------------------------------------------------
+// 控制列顯示與隱藏 ------------------------------------------------------------------------------------------------
+void _showControls({bool focusPlay = false, bool focusBar = false}) {
+if (!mounted) return;
+final wasHidden = !_controls;
+setState(() => controls = true);
+if (focusBar) {
+WidgetsBinding.instance.addPostFrameCallback(() => bar.requestFocus());
+} else if (focusPlay || wasHidden) {
+WidgetsBinding.instance.addPostFrameCallback(() => _playButton.requestFocus());
+}
+_scheduleHide();
+}
+void _hideControls() {
+if (_scrubTo != null || _player.error.value != null) return;
+setState(() => _controls = false);
+_root.requestFocus();
+}
+void _scheduleHide() {
+_hideTimer?.cancel();
+_hideTimer = Timer(_hideAfter, () {
+final c = _c;
+if (mounted && c != null && c.value.isPlaying && ModalRoute.of(context)?.isCurrent == true) _hideControls();
+});
+}
+void _togglePause() {
+final c = _c;
+if (c == null) return;
+c.value.isPlaying ? c.pause() : c.play();
+_showControls();
+}
+// 進度快轉與倒轉 --------------------------------------------------------------------------------------------------
+void _scrub(int dir) {
+final c = _c;
+if (c == null || !c.value.isInitialized) return;
+if (_info?.isLive ?? false) {
+c.seekTo(c.value.position + Duration(seconds: 10 * dir));
+return;
+}
+final now = DateTime.now();
+_scrubCount = now.difference(_lastScrub) < const Duration(milliseconds: 500) ? _scrubCount + 1 : 0;
+_lastScrub = now;
+final step = Duration(seconds: _scrubCount > 20 ? 60 : (_scrubCount > 8 ? 30 : 10));
+final from = _scrubTo ?? c.value.position;
+final d = c.value.duration;
+var to = dir > 0 ? from + step : from - step;
+if (to < Duration.zero) to = Duration.zero;
+if (to > d - const Duration(seconds: 1)) to = d - const Duration(seconds: 1);
+setState(() => _scrubTo = to);
+_scrubTimer?.cancel();
+_scrubTimer = Timer(const Duration(milliseconds: 800), _commitScrub);
+_scheduleHide();
+}
+void _commitScrub() {
+final to = _scrubTo;
+_scrubTimer?.cancel();
+if (to == null) return;
+_c?.seekTo(to);
+setState(() => _scrubTo = null);
+_scheduleHide();
+}
+// 遙控器按鍵處理 --------------------------------------------------------------------------------------------------
+KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+final k = e.logicalKey;
+if (_countdown != null) {
+if (isSelectKey(k)) {
+_countdownTimer?.cancel();
+setState(() => _countdown = null);
+_goNext();
+} else {
+_cancelCountdown();
+}
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.mediaPlayPause || k == LogicalKeyboardKey.space) {
+_togglePause();
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.mediaPlay) {
+_c?.play();
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.mediaPause) {
+_c?.pause();
+_showControls();
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.mediaStop) {
+Navigator.of(context).maybePop();
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.mediaTrackNext || k == LogicalKeyboardKey.channelUp) {
+_goNext();
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.mediaTrackPrevious || k == LogicalKeyboardKey.channelDown) {
+_goPrevious();
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.mediaFastForward || k == LogicalKeyboardKey.mediaRewind) {
+if (!_controls) _showControls(focusBar: true);
+_scrub(k == LogicalKeyboardKey.mediaFastForward ? 1 : -1);
+return KeyEventResult.handled;
+}
+if (!_controls) {
+if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowRight) {
+_showControls(focusBar: true);
+_scrub(k == LogicalKeyboardKey.arrowRight ? 1 : -1);
+return KeyEventResult.handled;
+}
+if (isSelectKey(k) || k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.arrowDown) {
+_showControls(focusPlay: true);
+return KeyEventResult.handled;
+}
+return KeyEventResult.ignored;
+}
+_scheduleHide();
+if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {
+_hideControls();
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.arrowDown && _bar.hasFocus) {
+_playButton.requestFocus();
+return KeyEventResult.handled;
+}
+if (k == LogicalKeyboardKey.arrowUp && !_bar.hasFocus && !_upNextFocused) {
+if (FocusManager.instance.primaryFocus?.focusInDirection(TraversalDirection.up) != true) {
+_bar.requestFocus();
+}
+return KeyEventResult.handled;
+}
+final dir = TvKeys.direction(k);
+if (dir != null) {
+FocusManager.instance.primaryFocus?.focusInDirection(dir);
+return KeyEventResult.handled;
+}
+return KeyEventResult.ignored;
+}
+bool _onBack() {
+if (_scrubTo != null) {
+setState(() => _scrubTo = null);
+return true;
+}
+if (_countdown != null) {
+_cancelCountdown();
+return true;
+}
+final c = _c;
+if (_controls && _player.error.value == null && c != null && c.value.isPlaying) {
+_hideControls();
+return true;
+}
+return false;
+}
 
-  void _showControls({bool focusPlay = false, bool focusBar = false}) {
-    if (!mounted) return;
-    final wasHidden = !_controls;
-    setState(() => _controls = true);
-    if (focusBar) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _bar.requestFocus());
-    } else if (focusPlay || wasHidden) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _playButton.requestFocus());
-    }
-    _scheduleHide();
-  }
+---
 
-  void _hideControls() {
-    if (_scrubTo != null || _player.error.value != null) return;
-    setState(() => _controls = false);
-    _root.requestFocus();
-  }
+### 【第二部分：緊接在第一部分正下方貼上】
 
-  void _scheduleHide() {
-    _hideTimer?.cancel();
-    _hideTimer = Timer(_hideAfter, () {
-      final c = _c;
-      if (mounted && c != null && c.value.isPlaying && ModalRoute.of(context)?.isCurrent == true) _hideControls();
+```dart
+  // 側邊面板（字幕、設定、資訊、留言） --------------------------------------------------------------------------------
+
+  Future<void> _setCaptions(CaptionTrack? track) async {
+    setState(() {
+      _track = track;
+      _cues = null;
+      _caption = '';
     });
+    if (track == null) return;
+    try {
+      final cues = await Captions.load(track.url);
+      if (mounted && _track == track) setState(() => _cues = cues);
+    } catch (e) {
+      Toast.show('無法載入字幕');
+    }
   }
 
-  void _togglePause() {
+  void _captionsPanel() {
+    final tracks = _info?.captions ?? const <CaptionTrack>[];
+    if (tracks.isEmpty) return Toast.show('此影片沒有提供字幕');
+    showPanel(
+      context,
+      title: '字幕',
+      items: [
+        PanelItem('關閉', checked: _track == null, onSelect: () => _setCaptions(null)),
+        for (final t in tracks) PanelItem(t.name, checked: _track?.url == t.url, onSelect: () => _setCaptions(t)),
+      ],
+    );
+  }
+
+  void _settingsPanel() {
     final c = _c;
-    if (c == null) return;
-    c.value.isPlaying ? c.pause() : c.play();
-    _showControls();
+    final info = _info;
+    if (c == null || info == null) return;
+    final speed = c.value.playbackSpeed;
+    showPanel(
+      context,
+      title: '播放設定',
+      items: [
+        PanelItem(
+          '畫質',
+          icon: Icons.tune,
+          value: info.dashHeights.isEmpty
+              ? '${info.muxedHeight ?? ''}p'
+              : '最高 ${Services.player.source == null ? '' : '${info.dashHeights.last}p'}',
+          onSelect: () => showPanel(
+            context,
+            title: '畫質',
+            items: [
+              for (final h in info.dashHeights.reversed)
+                PanelItem(
+                  '${h}p',
+                  checked: h == info.dashHeights.last,
+                  onSelect: () {
+                    final pos = c.value.position;
+                    _player.open(_item.id, maxHeight: h, start: pos, speed: speed);
+                  },
+                ),
+            ],
+          ),
+        ),
+        PanelItem(
+          '播放速度',
+          icon: Icons.speed,
+          value: speed == 1 ? '正常' : '$speed×',
+          onSelect: () => showPanel(
+            context,
+            title: '播放速度',
+            items: [
+              for (final r in [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0])
+                PanelItem(r == 1 ? '正常' : '$r×', checked: speed == r, onSelect: () => c.setPlaybackSpeed(r)),
+            ],
+          ),
+        ),
+        PanelItem(
+          '字幕',
+          icon: Icons.closed_caption_outlined,
+          value: _track?.name ?? '關閉',
+          onSelect: _captionsPanel,
+        ),
+        PanelItem(
+          '自動播放',
+          icon: Icons.playlist_play,
+          value: Settings.instance.autoplay ? '開啟' : '關閉',
+          onSelect: () => Settings.instance.set('autoplay', !Settings.instance.autoplay),
+        ),
+      ],
+    );
   }
 
-  // Seeking ----------------------------------------------------------------------------------------------------------
+  void _infoPanel() {
+    final info = _info;
+    final chapters = info?.chapters ?? const <Chapter>[];
+    final paragraphs = (info?.description ?? '')
+        .split(RegExp(r'\n{2,}'))
+        .map((p) => p.trim())
+        .where((p) => p.isNotEmpty)
+        .toList();
+    showPanel(
+      context,
+      title: _item.title,
+      subtitle: [
+        if ((info?.viewCount ?? -1) >= 0) viewsLabel(info!.viewCount),
+        ?relativeDate(info?.uploadDate),
+      ].join(' • '),
+      wide: true,
+      content: (ctx) => ListView(
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 48),
+        children: [
+          if (chapters.isNotEmpty) const _PanelHeading('章節'),
+          for (final (i, ch) in chapters.indexed)
+            PanelRow(
+              autofocus: i == 0,
+              item: PanelItem(ch.title, sub: formatDuration(ch.start)),
+              onSelect: () {
+                Navigator.of(ctx).pop();
+                _c?.seekTo(ch.start);
+              },
+            ),
+          if (chapters.isNotEmpty) const _PanelHeading('資訊欄'),
+          for (final (i, p) in (paragraphs.isEmpty ? ['無影片說明'] : paragraphs).indexed)
+            TvFocusable(
+              autofocus: chapters.isEmpty && i == 0,
+              builder: (context, focused) => Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: focused ? const Color(0x14FFFFFF) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(p, style: const TextStyle(fontSize: 24, height: 1.5, color: Tv.text)),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
-  /// Moves the pending seek position; it's applied when the keys stop (or on OK).
-  void _scrub(int dir) {
+  void _commentsPanel() => showPanel(
+    context,
+    title: '留言',
+    wide: true,
+    content: (ctx) => _CommentsList(videoId: _item.id),
+  );
+
+  // 畫面建構 ---------------------------------------------------------------------------------------------------------
+
+  Duration get _duration {
     final c = _c;
-    if (c == null || !c.value.isInitialized) return;
-    if (_info?.isLive ?? false) {
-      c.seekTo(c.value.position + Duration(seconds: 10 * dir));
-      return;
-    }
-    final now = DateTime.now();
-    _scrubCount = now.difference(_lastScrub) < const Duration(milliseconds: 500) ? _scrubCount + 1 : 0;
-    _lastScrub = now;
-    final step = Duration(seconds: _scrubCount > 20 ? 60 : (_scrubCount > 8 ? 30 : 10));
-    final from = _scrubTo ?? c.value.position;
-    final d = c.value.duration;
-    var to = dir > 0 ? from + step : from - step;
-    if (to < Duration.zero) to = Duration.zero;
-    if (to > d - const Duration(seconds: 1)) to = d - const Duration(seconds: 1);
-    setState(() => _scrubTo = to);
-    _scrubTimer?.cancel();
-    _scrubTimer = Timer(const Duration(milliseconds: 800), _commitScrub);
-    _scheduleHide();
+    if (c != null && c.value.duration > Duration.zero) return c.value.duration;
+    return _info?.duration ?? Duration.zero;
   }
 
-  void _commitScrub() {
-    final to = _scrubTo;
-    _scrubTimer?.cancel();
-    if (to == null) return;
-    _c?.seekTo(to);
-    setState(() => _scrubTo = null);
-    _scheduleHide();
+  Chapter? _chapterAt(Duration t) {
+    Chapter? cur;
+    for (final c in _info?.chapters ?? const <Chapter>[]) {
+      if (c.start <= t) cur = c;
+    }
+    return cur;
   }
 
-  // Keys -------------------------------------------------------------------------------------------------------------
-
-      _scheduleHide();
-    if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {
-      _hideControls();
-      return KeyEventResult.handled;
-    }
-    // 確保在進度條按「下鍵」時，必定能跳到下方的播放與設定按鈕列
-    if (k == LogicalKeyboardKey.arrowDown && _bar.hasFocus) {
-      _playButton.requestFocus();
-      return KeyEventResult.handled;
-    }
-    // 在按鈕列按「上鍵」時，若空間導航沒找到目標則回到進度條
-    if (k == LogicalKeyboardKey.arrowUp && !_bar.hasFocus && !_upNextFocused) {
-      if (FocusManager.instance.primaryFocus?.focusInDirection(TraversalDirection.up) != true) {
-        _bar.requestFocus();
-      }
-      return KeyEventResult.handled;
-    }
-    final dir = TvKeys.direction(k);
-    if (dir != null) {
-      FocusManager.instance.primaryFocus?.focusInDirection(dir);
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
+  @override
+  Widget build(BuildContext context) {
+    final c = _c;
+    final v = c?.value;
+    final info = _info;
+    final error = _player.error.value;
+    final loading = error == null && (c == null || !v!.isInitialized || v.isBuffering);
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || _onBack()) return;
+        Navigator.of(context).pop();
+      },
+      child: Focus(
+        focusNode: _root,
+        autofocus: true,
+        onKeyEvent: _onKey,
+        child: Material(
+          color: Colors.black,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (c != null && v!.isInitialized)
+                Center(
+                  child: AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(c)),
+                ),
+              IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _controls ? 1 : 0,
+                  duration: const Duration(milliseconds: 250),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _upNextFocused ? const Color(0xBF000000) : null,
+                      gradient: _upNextFocused
+                          ? null
+                          : const LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [
+                                Color(0xEB000000),
+                                Color(0x8C000000),
+                                Color(0x00000000),
+                                Color(0x00000000),
+                                Color(0xCC000000),
+                              ],
+                              stops: [0, 0.38, 0.62, 0.7, 1],
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+              if (_caption.isNotEmpty)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: _controls ? 340 : 96,
+                  child: Center(
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 1500),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+                      decoration: BoxDecoration(color: const Color(0xB8080808), borderRadius: BorderRadius.circular(6)),
+                      child: Text(
+                        _caption,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 42, height: 1.35, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              _top(info),
+              _controlsView(c, info),
+              if (loading)
+                const Center(
+                  child: SizedBox(
+                    width: 96,
+                    height: 96,
+                    child: CircularProgressIndicator(strokeWidth: 8, color: Colors.white),
+                  ),
+                ),
+              if (error != null)
+                Positioned(
+                  left: 160,
+                  right: 160,
+                  top: 420,
+                  child: Text(
+                    '無法播放此影片。${error is VideoUnavailable ? error.friendly : error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 34, height: 1.4),
+                  ),
+                ),
+              if (_countdown != null) _countdownView(),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
+  Widget _top(VideoInfo? info) => Positioned(
+    left: 96,
+    right: 96,
+    top: 64,
+    child: IgnorePointer(
+      child: AnimatedOpacity(
+        opacity: _controls && _countdown == null && !_upNextFocused ? 1 : 0,
+        duration: const Duration(milliseconds: 250),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1500),
+              child: Text(
+                _item.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 44, fontWeight: FontWeight.w500),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                if (info?.channelAvatar != null) ...[
+                  ClipOval(child: NetImage(info!.channelAvatar, width: 52, height: 52)),
+                  const SizedBox(width: 16),
+                ],
+                Text(info?.channelName ?? _item.channelName ?? '', style: const TextStyle(fontSize: 26)),
+                if ((info?.subscriberCount ?? -1) >= 0) ...[
+                  const SizedBox(width: 16),
+                  Text(
+'${compactCount(info!.subscriberCount)} 位訂閱者',
+style: const TextStyle(fontSize: 22, color: Tv.text2),
+),
+],
+],
+),
+const SizedBox(height: 10),
+Text(
+[
+if ((info?.viewCount ?? -1) >= 0)
+(info!.isLive ? '${compactCount(info.viewCount)} 人正在觀看' : viewsLabel(info.viewCount)),
+?relativeDate(info?.uploadDate),
+].join(' • '),
+style: const TextStyle(fontSize: 22, color: Color(0xFFCCCCCC)),
+),
+],
+),
+),
+),
+);
+void _revealUpNext(BuildContext card) {
+final box = card.findRenderObject() as RenderBox?;
+final column = _column.currentContext?.findRenderObject();
+if (box == null || column == null) return;
+final bottom = 800 + box.localToGlobal(Offset.zero, ancestor: column).dy + box.size.height;
+setState(() => _slide = bottom > 1080 - 72 ? bottom - (1080 - 72) : 0);
+}
+Widget _controlsView(VideoPlayerController? c, VideoInfo? info) {
+final v = c?.value;
+final live = info?.isLive ?? false;
+final d = _duration;
+final pos = _scrubTo ?? v?.position ?? Duration.zero;
+final chapter = _chapterAt(pos);
+final upNext = _queue != null ? _queue!.items.skip(_queue!.index + 1).toList() : _related;
+return Positioned(
+left: 96,
+right: 96,
+top: 800,
+child: AnimatedContainer(
+transform: Matrix4.translationValues(0, _upNextFocused ? -_slide : 0, 0),
+duration: Tv.slide,
+curve: Curves.easeOut,
+child: AnimatedOpacity(
+opacity: _controls && _countdown == null ? 1 : 0,
+duration: const Duration(milliseconds: 250),
+child: ExcludeFocus(
+excluding: !_controls,
+child: Column(
+key: _column,
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+_SeekBar(
+focusNode: _bar,
+position: v?.position ?? Duration.zero,
+buffered: (v?.buffered.isNotEmpty ?? false) ? v!.buffered.last.end : Duration.zero,
+scrubTo: _scrubTo,
+duration: d,
+live: live,
+chapters: info?.chapters ?? const [],
+segments: _segments,
+storyboard: info?.storyboards.lastOrNull,
+chapterAt: _chapterAt,
+onScrub: _scrub,
+onSelect: () => _scrubTo != null ? _commitScrub() : _togglePause(),
+),
+Row(
+children: [
+Text(
+live ? '直播' : formatDuration(pos),
+style: TextStyle(
+fontSize: 24,
+color: live ? const Color(0xFFFF4E45) : const Color(0xFFDDDDDD),
+fontWeight: live ? FontWeight.w700 : FontWeight.w400,
+),
+),
+Expanded(
+child: Text(
+chapter?.title ?? '',
+textAlign: TextAlign.center,
+maxLines: 1,
+overflow: TextOverflow.ellipsis,
+style: const TextStyle(fontSize: 24),
+),
+),
+if (!live) Text(formatDuration(d), style: const TextStyle(fontSize: 24, color: Color(0xFFDDDDDD))),
+],
+),
+const SizedBox(height: 22),
+_buttons(c, info),
+const SizedBox(height: 56),
+if (upNext.isNotEmpty) ...[
+Text(
+_queue != null ? '接下來播放（${_queue!.title ?? '此播放清單'}）' : '接下來播放',
+maxLines: 1,
+overflow: TextOverflow.ellipsis,
+style: Tv.rowTitle,
+),
+const SizedBox(height: 14),
+TvGrid(
+focusNode: _upNext,
+items: upNext.take(30).toList(),
+onReveal: _revealUpNext,
+holdSides: true,
+actions: ItemActions(
+onSelect: (it) {
+if (it is! VideoItem) return openItem(context, it);
+final q = _queue;
+if (q != null) {
+q.index = q.items.indexWhere((x) => x.id == it.id);
+_play(it, queue: q);
+} else {
+_play(it);
+}
+},
+onLongPress: (it) => itemOptions(context, it),
+),
+),
+],
+],
+),
+),
+),
+),
+);
+}
+Widget _buttons(VideoPlayerController? c, VideoInfo? info) {
+final lib = Library.instance;
+final playing = c?.value.isPlaying ?? false;
+final channel = (info?.channelId ?? _item.channelId) == null
+? null
+: ChannelItem(
+id: info?.channelId ?? _item.channelId!,
+name: info?.channelName ?? _item.channelName ?? '',
+avatar: info?.channelAvatar,
+);
+final liked = lib.has('liked', _item.id);
+final subscribed = channel != null && lib.isSubscribed(channel.id);
+return Row(
+children: [
+_WatchButton(icon: Icons.skip_previous, onSelect: _goPrevious),
+const SizedBox(width: 16),
+_WatchButton(
+icon: playing ? Icons.pause : Icons.play_arrow,
+big: true,
+focusNode: _playButton,
+onSelect: _togglePause,
+),
+const SizedBox(width: 16),
+_WatchButton(icon: Icons.skip_next, onSelect: _goNext),
+const Spacer(),
+_WatchButton(
+icon: liked ? Icons.thumb_up : Icons.thumb_up_outlined,
+label: (info?.likeCount ?? -1) >= 0 ? compactCount(info!.likeCount) : '喜歡',
+on: liked,
+onSelect: () => setState(
+() => Toast.show(lib.toggle('liked', _item) ? '已加入喜歡的影片' : '已從喜歡的影片移除'),
+),
+),
+if (_dislikes != null) ...[
+const SizedBox(width: 16),
+_WatchButton(
+icon: Icons.thumb_down_outlined,
+label: compactCount(_dislikes!),
+onSelect: () => Toast.show('資料來自 Return YouTube Dislike 預估'),
+),
+],
+const SizedBox(width: 16),
+_WatchButton(
+icon: Icons.watch_later_outlined,
+label: lib.has('watchLater', _item.id) ? '已儲存' : '稍後觀看',
+onSelect: () => setState(
+() => Toast.show(lib.toggle('watchLater', _item) ? '已儲存至稍後觀看' : '已從稍後觀看移除'),
+),
+),
+if (channel != null) ...[
+const SizedBox(width: 16),
+_WatchButton(
+icon: Icons.notifications_outlined,
+label: subscribed ? '已訂閱' : '訂閱',
+on: subscribed,
+onSelect: () => setState(() => toggleSubscription(channel)),
+),
+],
+const SizedBox(width: 16),
+_WatchButton(icon: Icons.closed_caption_outlined, on: _track != null, onSelect: _captionsPanel),
+const SizedBox(width: 16),
+_WatchButton(icon: Icons.tune, onSelect: _settingsPanel),
+const SizedBox(width: 16),
+_WatchButton(icon: Icons.info_outline, onSelect: _infoPanel),
+const SizedBox(width: 16),
+_WatchButton(icon: Icons.comment_outlined, onSelect: _commentsPanel),
+if (channel != null) ...[
+const SizedBox(width: 16),
+_WatchButton(icon: Icons.account_circle_outlined, onSelect: () => openItem(context, channel)),
+],
+],
+);
+}
+Widget _countdownView() {
+final next = _nextItem();
+return Positioned(
+right: 96,
+bottom: 96,
+width: 600,
+child: Container(
+padding: const EdgeInsets.all(32),
+decoration: BoxDecoration(color: const Color(0xF5212121), borderRadius: BorderRadius.circular(24)),
+child: Column(
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+Text('${_countdown ?? 0} 秒後播放下一部影片', style: const TextStyle(fontSize: 26, color: Tv.text2)),
+const SizedBox(height: 18),
+if (next != null)
+ClipRRect(
+borderRadius: BorderRadius.circular(12),
+child: AspectRatio(aspectRatio: 16 / 9, child: NetImage(next.thumbnailOrDefault, width: 536)),
+),
+const SizedBox(height: 18),
+Text(
+next?.title ?? '',
+maxLines: 2,
+overflow: TextOverflow.ellipsis,
+style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w500),
+),
+Text(next?.channelName ?? '', style: const TextStyle(fontSize: 22, color: Tv.text2)),
+const SizedBox(height: 18),
+const Text('按確認鍵立即播放 • 按返回鍵取消', style: TextStyle(fontSize: 22, color: Tv.text2)),
+],
+),
+),
+);
+}
+}
+class _PanelHeading extends StatelessWidget {
+const _PanelHeading(this.text);
+final String text;
+@override
+Widget build(BuildContext context) => Padding(
+padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+child: Text(
+text,
+style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: Tv.text2),
+),
+);
+}
+class _WatchButton extends StatelessWidget {
+const _WatchButton({
+required this.icon,
+this.label,
+this.onSelect,
+this.big = false,
+this.on = false,
+this.focusNode,
+});
+final IconData icon;
+final String? label;
+final VoidCallback? onSelect;
+final bool big;
+final bool on;
+final FocusNode? focusNode;
+@override
+Widget build(BuildContext context) => TvFocusable(
+focusNode: focusNode,
+onSelect: onSelect,
+scrollAlignment: null,
+builder: (context, focused) => AnimatedScale(
+scale: focused ? 1.08 : 1,
+duration: const Duration(milliseconds: 150),
+child: Container(
+height: big ? 88 : 72,
+constraints: BoxConstraints(minWidth: big ? 88 : 72),
+padding: EdgeInsets.symmetric(horizontal: label == null ? 0 : 20),
+decoration: BoxDecoration(
+color: focused ? Tv.focusBg : const Color(0x24FFFFFF),
+borderRadius: BorderRadius.circular(44),
+),
+child: Row(
+mainAxisSize: MainAxisSize.min,
+mainAxisAlignment: MainAxisAlignment.center,
+children: [
+Icon(
+icon,
+size: big ? 48 : 34,
+color: focused ? Tv.focusFg : (on ? const Color(0xFF3EA6FF) : Colors.white),
+),
+if (label != null) ...[
+const SizedBox(width: 12),
+Text(
+label!,
+style: TextStyle(fontSize: 22, fontWeight: FontWeight.w500, color: focused ? Tv.focusFg : Colors.white),
+),
+],
+],
+),
+),
+),
+);
+}
+class _SeekBar extends StatelessWidget {
+const _SeekBar({
+required this.focusNode,
+required this.position,
+required this.buffered,
+required this.scrubTo,
+required this.duration,
+required this.live,
+required this.chapters,
+required this.segments,
+required this.storyboard,
+required this.chapterAt,
+required this.onScrub,
+required this.onSelect,
+});
+final FocusNode focusNode;
+final Duration position;
+final Duration buffered;
+final Duration? scrubTo;
+final Duration duration;
+final bool live;
+final List chapters;
+final List segments;
+final Storyboard? storyboard;
+final Chapter? Function(Duration) chapterAt;
+final ValueChanged onScrub;
+final VoidCallback onSelect;
+double _f(Duration t) =>
+duration.inMilliseconds <= 0 ? 0 : (t.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
+@override
+Widget build(BuildContext context) => TvFocusable(
+focusNode: focusNode,
+scrollAlignment: null,
+onSelect: onSelect,
+onKey: (e) {
+if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+if (e.logicalKey == LogicalKeyboardKey.arrowLeft || e.logicalKey == LogicalKeyboardKey.arrowRight) {
+onScrub(e.logicalKey == LogicalKeyboardKey.arrowRight ? 1 : -1);
+return KeyEventResult.handled;
+}
+return KeyEventResult.ignored;
+},
+builder: (context, focused) => LayoutBuilder(
+builder: (context, box) {
+final w = box.maxWidth;
+final knob = live ? 1.0 : _f(scrubTo ?? position);
+final barHeight = focused ? 10.0 : 6.0;
+return SizedBox(
+height: 40,
+child: Stack(
+clipBehavior: Clip.none,
+alignment: Alignment.centerLeft,
+children: [
+Container(
+height: barHeight,
+decoration: BoxDecoration(color: const Color(0x4DFFFFFF), borderRadius: BorderRadius.circular(5)),
+),
+if (!live) Container(height: barHeight, width: w * _f(buffered), color: const Color(0x73FFFFFF)),
+for (final s in segments)
+Positioned(
+left: w * _f(s.start),
+width: w * (_f(s.end) - _f(s.start)),
+child: Container(height: barHeight, color: s.category.color.withValues(alpha: 0.9)),
+),
+Container(
+height: barHeight,
+width: live ? w : w * _f(position),
+color: live ? const Color(0xFFCC0000) : Tv.brand,
+),
+for (final c in chapters)
+if (c.start > Duration.zero)
+Positioned(
+left: w * _f(c.start) - 2,
+child: Container(width: 4, height: barHeight, color: const Color(0xD9000000)),
+),
+if (focused)
+Positioned(
+left: w * knob - 12,
+child: Container(
+width: 24,
+height: 24,
+decoration: BoxDecoration(shape: BoxShape.circle, color: scrubTo != null ? Colors.white : Tv.brand),
+),
+),
+if (scrubTo != null)
+Positioned(
+left: (w * knob - 170).clamp(0.0, w - 340),
+bottom: 48,
+width: 340,
+child: Column(
+children: [
+if (storyboard != null) _StoryboardFrame(sb: storyboard!, at: scrubTo!),
+const SizedBox(height: 12),
+Text(
+chapterAt(scrubTo!)?.title ?? '',
+maxLines: 1,
+overflow: TextOverflow.ellipsis,
+style: const TextStyle(fontSize: 22),
+),
+Text(formatDuration(scrubTo!), style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w500)),
+],
+),
+),
+],
+),
+);
+},
+),
+);
+}
+class _StoryboardFrame extends StatelessWidget {
+const _StoryboardFrame({required this.sb, required this.at});
+final Storyboard sb;
+final Duration at;
+@override
+Widget build(BuildContext context) {
+final perFrame = sb.durationPerFrame.inMilliseconds;
+if (perFrame <= 0 || sb.urls.isEmpty) return const SizedBox.shrink();
+final i = (at.inMilliseconds ~/ perFrame).clamp(0, sb.totalCount - 1);
+final perPage = sb.framesPerPageX * sb.framesPerPageY;
+final page = (i ~/ perPage).clamp(0, sb.urls.length - 1);
+final inPage = i % perPage;
+final col = inPage % sb.framesPerPageX;
+final row = inPage ~/ sb.framesPerPageX;
+const w = 320.0;
+final h = w * sb.frameHeight / sb.frameWidth;
+return Container(
+width: w,
+height: h,
+decoration: BoxDecoration(
+color: Colors.black,
+borderRadius: BorderRadius.circular(12),
+boxShadow: const [BoxShadow(color: Colors.white, spreadRadius: 4)],
+),
+clipBehavior: Clip.antiAlias,
+child: OverflowBox(
+alignment: Alignment.topLeft,
+maxWidth: w * sb.framesPerPageX,
+maxHeight: h * sb.framesPerPageY,
+child: Transform.translate(
+offset: Offset(-col * w, -row * h),
+child: Image.network(
+sb.urls[page],
+width: w * sb.framesPerPageX,
+height: h * sb.framesPerPageY,
+fit: BoxFit.fill,
+gaplessPlayback: true,
+),
+),
+),
+);
+}
+}
+class _CommentsList extends StatefulWidget {
+const _CommentsList({required this.videoId});
+final String videoId;
+@override
+State<_CommentsList> createState() => _CommentsListState();
+}
+class _CommentsListState extends State<_CommentsList> {
+final _comments = [];
+String? _token;
+bool _loading = true;
+bool _done = false;
+@override
+void initState() {
+super.initState();
+_load();
+}
+Future _load() async {
+try {
+final page = _token == null
+? await Services.yt.comments(widget.videoId)
+: await Services.yt.commentsContinuation(_token!);
+if (!mounted) return;
+setState(() {
+_comments.addAll(page.comments);
+_token = page.continuation;
+_done = page.continuation == null;
+_loading = false;
+});
+} catch (e) {
+if (mounted) {
+setState(() {
+_loading = false;
+_done = true;
+});
+}
+}
+}
+@override
+Widget build(BuildContext context) {
+if (_comments.isEmpty) {
+return Padding(
+padding: const EdgeInsets.all(48),
+child: Text(_loading ? '載入留言中…' : '目前沒有留言', style: const TextStyle(fontSize: 24, color: Tv.text2)),
+);
+}
+return ListView.builder(
+padding: const EdgeInsets.fromLTRB(24, 8, 24, 48),
+itemCount: _comments.length,
+itemBuilder: (context, i) {
+final c = _comments[i];
+if (i >= _comments.length - 5 && !_done && !_loading) {
+_loading = true;
+_load();
+}
+return TvFocusable(
+autofocus: i == 0,
+builder: (context, focused) => Container(
+padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+decoration: BoxDecoration(
+color: focused ? const Color(0x14FFFFFF) : Colors.transparent,
+borderRadius: BorderRadius.circular(14),
+),
+child: Row(
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+ClipOval(child: NetImage(c.authorAvatar, width: 56, height: 56)),
+const SizedBox(width: 20),
+Expanded(
+child: Column(
+crossAxisAlignment: CrossAxisAlignment.start,
+children: [
+Text([c.author, ?c.published].join(' • '), style: const TextStyle(fontSize: 20, color: Tv.text2)),
+const SizedBox(height: 6),
+Text(c.text, style: const TextStyle(fontSize: 24, height: 1.4)),
+const SizedBox(height: 8),
+Text(
+[
+if (c.likes != null && c.likes!.isNotEmpty) '👍 ${c.likes}',
+if (c.replyCount > 0) '${c.replyCount} 則回覆',
+].join('   '),
+style: const TextStyle(fontSize: 20, color: Tv.text2),
+),
+],
+),
+),
+],
+),
+),
+);
+},
+);
+}
+}
