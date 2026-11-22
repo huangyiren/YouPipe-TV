@@ -13,8 +13,8 @@ import '../ui/theme.dart';
 import 'playlist.dart';
 import 'subscriptions.dart';
 
-/// Library: history, Watch later, liked videos, saved playlists and subscriptions, each a row, kept on the TV. Signed
-/// in, the account's YouTube history, Watch later, liked videos and playlists come after the TV's history.
+/// 媒體庫：保存在電視端的觀看紀錄、稍後觀看、喜歡的影片、已儲存播放清單與訂閱頻道。
+/// 登入帳號後，也會一併顯示 YouTube 帳號的觀看紀錄、稍後觀看、喜歡的影片與播放清單。
 class LibraryScreen extends StatefulWidget {
   const LibraryScreen({super.key});
 
@@ -25,7 +25,7 @@ class LibraryScreen extends StatefulWidget {
 class _LibraryScreenState extends State<LibraryScreen> {
   static const _rowLimit = 20;
 
-  /// The account's lists: title, items, and the playlist that shows all of it (null: the row holds all there is).
+  /// 帳號清單：標題、項目列表，以及可檢視全部內容的播放清單（null 代表該列已顯示全部內容）。
   List<(String, List<YtItem>, PlaylistItem?)> _account = const [];
   Timer? _reload;
 
@@ -45,7 +45,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     super.dispose();
   }
 
-  /// A change here may have gone to the account too (Watch later, likes), so its lists reload shortly after.
+  /// 本機變更可能已同步至帳號（如稍後觀看、喜歡），延遲 3 秒後重新載入帳號清單。
   void _changed() {
     if (!mounted) return;
     setState(() {});
@@ -74,19 +74,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (!mounted || !Account.instance.signedIn) return;
     setState(
       () => _account = [
-        ('YouTube history', lists[0], null),
-        ('YouTube Watch later', lists[1], const PlaylistItem(id: 'WL', title: 'Watch later')),
-        ('YouTube liked videos', lists[2], const PlaylistItem(id: 'LL', title: 'Liked videos')),
-        ('YouTube playlists', lists[3], null),
+        ('YouTube 觀看紀錄', lists[0], null),
+        ('YouTube 稍後觀看', lists[1], const PlaylistItem(id: 'WL', title: '稍後觀看')),
+        ('YouTube 喜歡的影片', lists[2], const PlaylistItem(id: 'LL', title: '喜歡的影片')),
+        ('YouTube 播放清單', lists[3], null),
       ],
     );
   }
 
-  /// Card actions that add "Remove from …" for the list the card sits in.
+  /// 卡片操作選單，加上「從……移除」。
   ItemActions _actions(String key, String title) => defaultActions(
     context,
     extra: (item) => [
-      PanelItem('Remove from $title', icon: Icons.close, onSelect: () => Library.instance.remove(key, item.id)),
+      PanelItem('從「$title」移除', icon: Icons.close, onSelect: () => Library.instance.remove(key, item.id)),
     ],
   );
 
@@ -94,12 +94,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   Widget build(BuildContext context) {
     final lib = Library.instance;
     final sections = <(String, List<YtItem>, String?)>[
-      ('History', [for (final h in lib.history()) h.video], 'history'),
+      ('觀看紀錄', [for (final h in lib.history()) h.video], 'history'),
       for (final a in _account) (a.$1, a.$2, null),
-      ('Watch later', lib.listOf('watchLater'), 'watchLater'),
-      ('Liked videos', lib.listOf('liked'), 'liked'),
-      ('Saved playlists', lib.listOf('playlists'), 'playlists'),
-      ('Subscriptions', lib.subscriptions(), null),
+      ('稍後觀看', lib.listOf('watchLater'), 'watchLater'),
+      ('喜歡的影片', lib.listOf('liked'), 'liked'),
+      ('已儲存的播放清單', lib.listOf('playlists'), 'playlists'),
+      ('訂閱內容', lib.subscriptions(), null),
     ].where((s) => s.$2.isNotEmpty).toList();
     if (sections.isEmpty) {
       return const Padding(
@@ -107,10 +107,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Your library is empty', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500)),
+            Text('你的媒體庫目前是空的', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500)),
             SizedBox(height: 16),
             Text(
-              'Videos you watch, save for later or like, and playlists you save, show up here.',
+              '你觀看過的影片、加入稍後觀看或喜歡的影片，以及儲存的播放清單都會顯示在這裡。',
               style: TextStyle(fontSize: 26, color: Tv.text2),
             ),
           ],
@@ -127,7 +127,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             items: s.$2.take(_rowLimit).toList(),
             actions: s.$3 == null ? defaultActions(context) : _actions(s.$3!, s.$1),
           ),
-        // Longer lists open in full from here.
+        // 項目超過上限時，可從下方開啟完整清單。
         if (sections.any((s) => s.$2.length > _rowLimit)) ...[
           const SizedBox(height: 8),
           for (final s in sections.where((s) => s.$2.length > _rowLimit))
@@ -153,14 +153,14 @@ class _SeeAll extends StatelessWidget {
   final List<YtItem> items;
   final ItemActions? actions;
 
-  /// An account list that pages in full from its playlist (Watch later, liked videos).
+  /// 可完整分頁載入的帳號播放清單（如稍後觀看、喜歡的影片）。
   final PlaylistItem? playlist;
 
   @override
   Widget build(BuildContext context) => Align(
     alignment: Alignment.centerLeft,
     child: PanelRow(
-      item: PanelItem('See all: $title', value: playlist == null ? '${items.length}' : null, icon: Icons.grid_view),
+      item: PanelItem('查看全部：$title', value: playlist == null ? '${items.length}' : null, icon: Icons.grid_view),
       onSelect: () => Navigator.of(context).push(
         tvRoute(
           playlist != null
