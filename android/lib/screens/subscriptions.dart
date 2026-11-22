@@ -9,7 +9,7 @@ import '../ui/focusable.dart';
 import '../ui/shell.dart';
 import '../ui/theme.dart';
 
-/// Subscriptions: the subscribed channels in a row, then their latest videos in a grid (core/subs_feed.dart).
+/// 訂閱內容頁面：上方橫列顯示已訂閱的頻道，下方網格顯示最新影片（資料來源於 core/subs_feed.dart）。
 class SubscriptionsScreen extends StatefulWidget {
   const SubscriptionsScreen({super.key});
 
@@ -59,15 +59,15 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('No subscriptions yet', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500)),
+            const Text('尚未訂閱任何頻道', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500)),
             const SizedBox(height: 16),
             const Text(
-              'Open a channel and choose Subscribe. Its new videos show up here.',
+              '開啟任一頻道並選擇「訂閱」，該頻道的最新影片就會顯示在這裡。',
               style: TextStyle(fontSize: 26, color: Tv.text2),
             ),
             const SizedBox(height: 36),
             TvButton(
-              label: 'Search',
+              label: '搜尋',
               icon: Icons.search,
               onSelect: () => context.findAncestorStateOfType<ShellState>()?.open('search'),
             ),
@@ -78,8 +78,8 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(Tv.pad, Tv.topbarHeight, Tv.pad, 400),
       children: [
-        TvRow(title: 'Channels', items: subs, actions: defaultActions(context)),
-        Text(_videos.isEmpty && _refreshing ? 'Loading videos…' : 'Latest videos', style: Tv.rowTitle),
+        TvRow(title: '已訂閱頻道', items: subs, actions: defaultActions(context)),
+        Text(_videos.isEmpty && _refreshing ? '正在載入影片…' : '最新影片', style: Tv.rowTitle),
         const SizedBox(height: 14),
         TvGrid(items: [for (final f in _videos) f.video], actions: defaultActions(context)),
       ],
@@ -87,7 +87,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
   }
 }
 
-/// A titled grid of items: Library's "See all".
+/// 完整項目列表畫面：用於媒體庫的「查看全部」。
 class ListScreen extends StatelessWidget {
   const ListScreen({super.key, required this.title, required this.items, this.actions});
 
