@@ -12,13 +12,13 @@ class Settings extends ChangeNotifier {
     'quality': 'auto', // 'auto' or a maximum height: 1080, 720, 480, 360
     'autoplay': true,
     'captions': false,
-    'captionLang': null, // null: the TV's language
+    'captionLang': 'zh-TW', // 預設繁體中文字幕
     'speed': 1.0,
     'sponsorBlock': false,
     'sbActions': <String, Object?>{}, // category → 'skip' | 'show' | 'off'
     'dislikes': true,
-    'gl': 'US',
-    'hl': null, // null: the TV's language
+    'gl': 'TW', // 預設地區為台灣
+    'hl': 'zh-TW', // 預設內容語言為繁體中文
   };
 
   final Map<String, Object?> _values;
@@ -49,7 +49,7 @@ class Settings extends ChangeNotifier {
 
   /// The language YouTube answers in: the setting, else the TV's.
   String get hl => (_values['hl'] as String?) ?? PlatformDispatcher.instance.locale.languageCode;
-  String get gl => (_values['gl'] as String?) ?? 'US';
+  String get gl => (_values['gl'] as String?) ?? 'TW';
   String get captionLang => (_values['captionLang'] as String?) ?? PlatformDispatcher.instance.locale.languageCode;
 
   Map<String, String> get sbActions => {
