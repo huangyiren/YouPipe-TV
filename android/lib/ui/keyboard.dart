@@ -59,11 +59,22 @@ class _TvKeyboardState extends State<TvKeyboard> {
     super.initState();
     _controller = TextEditingController(text: widget.text);
     _internalInputFocus = FocusNode();
+    _inputFocus.addListener(_onInputFocusChange);
+  }
+
+  void _onInputFocusChange() {
+    if (mounted) {
+      setState(() => _inputFocused = _inputFocus.hasFocus);
+    }
   }
 
   @override
   void didUpdateWidget(covariant TvKeyboard oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.inputFocusNode != widget.inputFocusNode) {
+      (oldWidget.inputFocusNode ?? _internalInputFocus).removeListener(_onInputFocusChange);
+      _inputFocus.addListener(_onInputFocusChange);
+    }
     if (_controller.text != widget.text) {
       _controller.value = TextEditingValue(
         text: widget.text,
@@ -167,6 +178,7 @@ class _TvKeyboardState extends State<TvKeyboard> {
 
   @override
   void dispose() {
+    _inputFocus.removeListener(_onInputFocusChange);
     _select.dispose();
     _controller.dispose();
     _internalInputFocus.dispose();
