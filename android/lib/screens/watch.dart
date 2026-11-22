@@ -19,7 +19,11 @@ import '../ui/overlay.dart';
 import '../ui/shell.dart';
 import '../ui/theme.dart';
 
-/// 播放器畫面：全螢幕播放影片，按確認鍵或上下鍵顯示控制列；左右鍵直接快轉/倒轉並顯示預覽；返回鍵隱藏控制列或離開播放器。
+/// The player screen, like YouTube on TV (docs/ui.md):
+/// - The video fills the screen. OK, Up or Down shows the controls; Left/Right seek straight away with a preview.
+/// - Controls: title and channel at the top; the seek bar (storyboard preview, chapters, SponsorBlock segments); a
+///   row of buttons; and below it the Up next row (the queue, or related videos).
+/// - Back hides the controls, then leaves the player.
 class WatchScreen extends StatefulWidget {
   const WatchScreen({super.key, required this.video, this.queue});
 
@@ -28,7 +32,7 @@ class WatchScreen extends StatefulWidget {
 
   static _WatchScreenState? _current;
 
-  /// 播放 [video]；若播放器已開啟則直接在其中切換播放。
+  /// Plays [video]; when the player is already open, it plays there.
   static void open(BuildContext context, VideoItem video, {PlayQueue? queue}) {
     final current = _current;
     if (current != null && current.mounted) {
@@ -70,8 +74,6 @@ class _WatchScreenState extends State<WatchScreen> {
 
   bool _controls = true;
   bool _upNextFocused = false;
-  final _column = GlobalKey();
-  double _slide = 0;
   Duration? _scrubTo;
   int _scrubCount = 0;
   DateTime _lastScrub = DateTime(0);
@@ -120,7 +122,7 @@ class _WatchScreenState extends State<WatchScreen> {
   VideoPlayerController? get _c => _player.controller.value;
   VideoInfo? get _info => _player.info.value;
 
-  // 載入與播放 ------------------------------------------------------------------------------------------------------
+  // Loading ------------------------------------------------------------------------------------------------------
 
   Future<void> _play(VideoItem video, {PlayQueue? queue}) async {
     _saveProgress();
@@ -138,8 +140,6 @@ class _WatchScreenState extends State<WatchScreen> {
       _countdown = null;
       _scrubTo = null;
       _completedHandled = false;
-      _upNextFocused = false;
-      _slide = 0;
     });
     _showControls(focusPlay: true);
     Services.yt.related(video.id).then((p) {
@@ -158,7 +158,7 @@ class _WatchScreenState extends State<WatchScreen> {
       speed: Settings.instance.speed,
     );
     if (!ok || !mounted || _item.id != video.id) return;
-    if (resume > Duration.zero) Toast.show('從 ${formatDuration(resume)} 繼續播放');
+    if (resume > Duration.zero) Toast.show('繼續播放位置 ${formatDuration(resume)}');
     final info = _info;
     if (info != null) {
       _item = VideoItem(
@@ -214,12 +214,13 @@ class _WatchScreenState extends State<WatchScreen> {
     Library.instance.saveProgress(_item, pos, c.value.duration.inSeconds);
   }
 
-  // 播放事件 ------------------------------------------------------------------------------------------------------
+  // Playback events ----------------------------------------------------------------------------------------------
 
   void _onTick() {
     final c = _c;
     if (c == null || !mounted) return;
     final v = c.value;
+    // SponsorBlock: skip each "skip" segment once.
     for (final s in _segments) {
       if (s.category.currentAction == 'skip' &&
           !_skipped.contains(s) &&
@@ -249,6 +250,7 @@ class _WatchScreenState extends State<WatchScreen> {
       return;
     }
     if (!Settings.instance.autoplay) return _showControls(focusPlay: true);
+    // YouTube's countdown before the next video.
     setState(() {
       _countdown = 5;
       _controls = false;
@@ -270,7 +272,7 @@ class _WatchScreenState extends State<WatchScreen> {
     _showControls(focusPlay: true);
   }
 
-  // 播放佇列 ------------------------------------------------------------------------------------------------------
+  // Queue ----------------------------------------------------------------------------------------------------------
 
   VideoItem? _nextItem() {
     final q = _queue;
@@ -306,15 +308,16 @@ class _WatchScreenState extends State<WatchScreen> {
     _play(q.items[q.index], queue: q);
   }
 
-  // 控制列顯示與隱藏 ------------------------------------------------------------------------------------------------
+  // Controls ---------------------------------------------------------------------------------------------------------
+
   void _showControls({bool focusPlay = false, bool focusBar = false}) {
     if (!mounted) return;
     final wasHidden = !_controls;
-    setState(() => controls = true);
+    setState(() => _controls = true);
     if (focusBar) {
-      WidgetsBinding.instance.addPostFrameCallback(() => bar.requestFocus());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _bar.requestFocus());
     } else if (focusPlay || wasHidden) {
-      WidgetsBinding.instance.addPostFrameCallback(() => _playButton.requestFocus());
+      WidgetsBinding.instance.addPostFrameCallback((_) => _playButton.requestFocus());
     }
     _scheduleHide();
   }
@@ -340,7 +343,9 @@ class _WatchScreenState extends State<WatchScreen> {
     _showControls();
   }
 
-  // 進度快轉與倒轉 --------------------------------------------------------------------------------------------------
+  // Seeking ----------------------------------------------------------------------------------------------------------
+
+  /// Moves the pending seek position; it's applied when the keys stop (or on OK).
   void _scrub(int dir) {
     final c = _c;
     if (c == null || !c.value.isInitialized) return;
@@ -372,8 +377,10 @@ class _WatchScreenState extends State<WatchScreen> {
     _scheduleHide();
   }
 
-  // 遙控器按鍵處理 --------------------------------------------------------------------------------------------------
+  // Keys -------------------------------------------------------------------------------------------------------------
+
   KeyEventResult _onKey(FocusNode node, KeyEvent e) {
+    // OK's release after showing the controls doesn't press the button it lands on (SelectHandler needs the press).
     if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
     final k = e.logicalKey;
     if (_countdown != null) {
@@ -429,10 +436,6 @@ class _WatchScreenState extends State<WatchScreen> {
       return KeyEventResult.ignored;
     }
     _scheduleHide();
-    if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {
-      _hideControls();
-      return KeyEventResult.handled;
-    }
     if (k == LogicalKeyboardKey.arrowDown && _bar.hasFocus) {
       _playButton.requestFocus();
       return KeyEventResult.handled;
@@ -443,6 +446,11 @@ class _WatchScreenState extends State<WatchScreen> {
       }
       return KeyEventResult.handled;
     }
+    if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {
+      _hideControls();
+      return KeyEventResult.handled;
+    }
+    // Everything else moves focus between the controls.
     final dir = TvKeys.direction(k);
     if (dir != null) {
       FocusManager.instance.primaryFocus?.focusInDirection(dir);
@@ -468,7 +476,7 @@ class _WatchScreenState extends State<WatchScreen> {
     return false;
   }
 
-  // 側邊面板（字幕、設定、資訊、留言） --------------------------------------------------------------------------------
+  // Panels -----------------------------------------------------------------------------------------------------------
 
   Future<void> _setCaptions(CaptionTrack? track) async {
     setState(() {
@@ -481,7 +489,7 @@ class _WatchScreenState extends State<WatchScreen> {
       final cues = await Captions.load(track.url);
       if (mounted && _track == track) setState(() => _cues = cues);
     } catch (e) {
-      Toast.show('無法載入字幕');
+      Toast.show("無法載入字幕");
     }
   }
 
@@ -512,7 +520,7 @@ class _WatchScreenState extends State<WatchScreen> {
           icon: Icons.tune,
           value: info.dashHeights.isEmpty
               ? '${info.muxedHeight ?? ''}p'
-              : '最高 ${Services.player.source == null ? '' : '${info.dashHeights.last}p'}',
+              : 'Up to ${Services.player.source == null ? '' : '${info.dashHeights.last}p'}',
           onSelect: () => showPanel(
             context,
             title: '畫質',
@@ -542,7 +550,7 @@ class _WatchScreenState extends State<WatchScreen> {
             ],
           ),
         ),
-        PanelItem('字幕', icon: Icons.closed_caption_outlined, value: _track?.name ?? '關閉', onSelect: _captionsPanel),
+        PanelItem('字幕', icon: Icons.closed_caption_outlined, value: _track?.name ?? 'Off', onSelect: _captionsPanel),
         PanelItem(
           '自動播放',
           icon: Icons.playlist_play,
@@ -607,7 +615,7 @@ class _WatchScreenState extends State<WatchScreen> {
     content: (ctx) => _CommentsList(videoId: _item.id),
   );
 
-  // 畫面建構 ---------------------------------------------------------------------------------------------------------
+  // Building ---------------------------------------------------------------------------------------------------------
 
   Duration get _duration {
     final c = _c;
@@ -649,6 +657,7 @@ class _WatchScreenState extends State<WatchScreen> {
                 Center(
                   child: AspectRatio(aspectRatio: v.aspectRatio, child: VideoPlayer(c)),
                 ),
+              // Shade behind the controls.
               IgnorePointer(
                 child: AnimatedOpacity(
                   opacity: _controls ? 1 : 0,
@@ -708,7 +717,7 @@ class _WatchScreenState extends State<WatchScreen> {
                   right: 160,
                   top: 420,
                   child: Text(
-                    '無法播放此影片。${error is VideoUnavailable ? error.friendly : error}',
+                    "無法播放此影片。${error is VideoUnavailable ? error.friendly : error}",
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 34, height: 1.4),
                   ),
@@ -727,7 +736,7 @@ class _WatchScreenState extends State<WatchScreen> {
     top: 64,
     child: IgnorePointer(
       child: AnimatedOpacity(
-        opacity: _controls && _countdown == null && !_upNextFocused ? 1 : 0,
+        opacity: _controls && _countdown == null ? 1 : 0,
         duration: const Duration(milliseconds: 250),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -772,13 +781,6 @@ class _WatchScreenState extends State<WatchScreen> {
       ),
     ),
   );
-  void _revealUpNext(BuildContext card) {
-    final box = card.findRenderObject() as RenderBox?;
-    final column = _column.currentContext?.findRenderObject();
-    if (box == null || column == null) return;
-    final bottom = 800 + box.localToGlobal(Offset.zero, ancestor: column).dy + box.size.height;
-    setState(() => _slide = bottom > 1080 - 72 ? bottom - (1080 - 72) : 0);
-  }
 
   Widget _controlsView(VideoPlayerController? c, VideoInfo? info) {
     final v = c?.value;
@@ -791,8 +793,9 @@ class _WatchScreenState extends State<WatchScreen> {
       left: 96,
       right: 96,
       top: 800,
+      // Focus in the Up next row slides the controls up to show it.
       child: AnimatedContainer(
-        transform: Matrix4.translationValues(0, _upNextFocused ? -_slide : 0, 0),
+        transform: Matrix4.translationValues(0, _upNextFocused ? -420 : 0, 0),
         duration: Tv.slide,
         curve: Curves.easeOut,
         child: AnimatedOpacity(
@@ -801,7 +804,6 @@ class _WatchScreenState extends State<WatchScreen> {
           child: ExcludeFocus(
             excluding: !_controls,
             child: Column(
-              key: _column,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _SeekBar(
@@ -843,19 +845,11 @@ class _WatchScreenState extends State<WatchScreen> {
                 const SizedBox(height: 22),
                 _buttons(c, info),
                 const SizedBox(height: 56),
-                if (upNext.isNotEmpty) ...[
-                  Text(
-                    _queue != null ? '接下來播放（${_queue!.title ?? '此播放清單'}）' : '接下來播放',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Tv.rowTitle,
-                  ),
-                  const SizedBox(height: 14),
-                  TvGrid(
+                if (upNext.isNotEmpty)
+                  TvRow(
                     focusNode: _upNext,
+                    title: _queue != null ? '接下來播放：${_queue!.title ?? '此播放清單'}' : '接下來播放',
                     items: upNext.take(30).toList(),
-                    onReveal: _revealUpNext,
-                    holdSides: true,
                     actions: ItemActions(
                       onSelect: (it) {
                         if (it is! VideoItem) return openItem(context, it);
@@ -870,7 +864,6 @@ class _WatchScreenState extends State<WatchScreen> {
                       onLongPress: (it) => itemOptions(context, it),
                     ),
                   ),
-                ],
               ],
             ),
           ),
@@ -961,7 +954,7 @@ class _WatchScreenState extends State<WatchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${_countdown ?? 0} 秒後播放下一部影片', style: const TextStyle(fontSize: 26, color: Tv.text2)),
+            Text('接下來播放：${_countdown ?? 0}', style: const TextStyle(fontSize: 26, color: Tv.text2)),
             const SizedBox(height: 18),
             if (next != null)
               ClipRRect(
@@ -987,7 +980,9 @@ class _WatchScreenState extends State<WatchScreen> {
 
 class _PanelHeading extends StatelessWidget {
   const _PanelHeading(this.text);
+
   final String text;
+
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
@@ -998,6 +993,7 @@ class _PanelHeading extends StatelessWidget {
   );
 }
 
+/// A round control button; white while focused.
 class _WatchButton extends StatelessWidget {
   const _WatchButton({
     required this.icon,
@@ -1007,12 +1003,14 @@ class _WatchButton extends StatelessWidget {
     this.on = false,
     this.focusNode,
   });
+
   final IconData icon;
   final String? label;
   final VoidCallback? onSelect;
   final bool big;
   final bool on;
   final FocusNode? focusNode;
+
   @override
   Widget build(BuildContext context) => TvFocusable(
     focusNode: focusNode,
@@ -1052,6 +1050,7 @@ class _WatchButton extends StatelessWidget {
   );
 }
 
+/// The seek bar: Left/Right move a pending position (with a storyboard preview and the chapter's name), OK applies.
 class _SeekBar extends StatelessWidget {
   const _SeekBar({
     required this.focusNode,
@@ -1067,20 +1066,23 @@ class _SeekBar extends StatelessWidget {
     required this.onScrub,
     required this.onSelect,
   });
+
   final FocusNode focusNode;
   final Duration position;
   final Duration buffered;
   final Duration? scrubTo;
   final Duration duration;
   final bool live;
-  final List chapters;
-  final List segments;
+  final List<Chapter> chapters;
+  final List<SbSegment> segments;
   final Storyboard? storyboard;
   final Chapter? Function(Duration) chapterAt;
-  final ValueChanged onScrub;
+  final ValueChanged<int> onScrub;
   final VoidCallback onSelect;
+
   double _f(Duration t) =>
       duration.inMilliseconds <= 0 ? 0 : (t.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
+
   @override
   Widget build(BuildContext context) => TvFocusable(
     focusNode: focusNode,
@@ -1163,10 +1165,13 @@ class _SeekBar extends StatelessWidget {
   );
 }
 
+/// One frame of a storyboard sprite sheet, 320 wide.
 class _StoryboardFrame extends StatelessWidget {
   const _StoryboardFrame({required this.sb, required this.at});
+
   final Storyboard sb;
   final Duration at;
+
   @override
   Widget build(BuildContext context) {
     final perFrame = sb.durationPerFrame.inMilliseconds;
@@ -1207,25 +1212,29 @@ class _StoryboardFrame extends StatelessWidget {
   }
 }
 
+/// The comments panel's list, loading more as focus nears the end.
 class _CommentsList extends StatefulWidget {
   const _CommentsList({required this.videoId});
+
   final String videoId;
+
   @override
   State<_CommentsList> createState() => _CommentsListState();
 }
 
 class _CommentsListState extends State<_CommentsList> {
-  final _comments = [];
+  final _comments = <CommentData>[];
   String? _token;
   bool _loading = true;
   bool _done = false;
+
   @override
   void initState() {
     super.initState();
     _load();
   }
 
-  Future _load() async {
+  Future<void> _load() async {
     try {
       final page = _token == null
           ? await Services.yt.comments(widget.videoId)
