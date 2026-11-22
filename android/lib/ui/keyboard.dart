@@ -80,10 +80,7 @@ class _TvKeyboardState extends State<TvKeyboard> {
         color: _inputFocused ? const Color(0x18FFFFFF) : Colors.transparent,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
         border: Border(
-          bottom: BorderSide(
-            color: _inputFocused ? Tv.focusBg : const Color(0xFF555555),
-            width: _inputFocused ? 4 : 3,
-          ),
+          bottom: BorderSide(color: _inputFocused ? Tv.focusBg : const Color(0xFF555555), width: _inputFocused ? 4 : 3),
         ),
       ),
       alignment: Alignment.centerLeft,

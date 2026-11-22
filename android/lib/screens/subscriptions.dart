@@ -61,10 +61,7 @@ class _SubscriptionsScreenState extends State<SubscriptionsScreen> {
           children: [
             const Text('尚未訂閱任何頻道', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500)),
             const SizedBox(height: 16),
-            const Text(
-              '開啟任一頻道並選擇「訂閱」，該頻道的最新影片就會顯示在這裡。',
-              style: TextStyle(fontSize: 26, color: Tv.text2),
-            ),
+            const Text('開啟任一頻道並選擇「訂閱」，該頻道的最新影片就會顯示在這裡。', style: TextStyle(fontSize: 26, color: Tv.text2)),
             const SizedBox(height: 36),
             TvButton(
               label: '搜尋',

@@ -109,10 +109,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           children: [
             Text('你的媒體庫目前是空的', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500)),
             SizedBox(height: 16),
-            Text(
-              '你觀看過的影片、加入稍後觀看或喜歡的影片，以及儲存的播放清單都會顯示在這裡。',
-              style: TextStyle(fontSize: 26, color: Tv.text2),
-            ),
+            Text('你觀看過的影片、加入稍後觀看或喜歡的影片，以及儲存的播放清單都會顯示在這裡。', style: TextStyle(fontSize: 26, color: Tv.text2)),
           ],
         ),
       );
