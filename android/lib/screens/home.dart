@@ -21,7 +21,7 @@ class _Row {
   final focus = FocusNode();
 }
 
-/// Home: rows of videos that slide sideways (core/home_rows.dart says where each comes from).
+/// 首頁：橫向滑動的影片推薦列（資料來源定義於 core/home_rows.dart）。
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -33,6 +33,19 @@ class _HomeScreenState extends State<HomeScreen> {
   List<_Row> _rows = [];
   DateTime _builtAt = DateTime.now();
   bool _failed = false;
+
+  static const _titleMap = <String, String>{
+    'Continue watching': '繼續觀看',
+    'Recommended': '為你推薦',
+    'Subscriptions': '訂閱內容',
+    'Trending': '發燒影片',
+    'Music': '音樂',
+    'Gaming': '遊戲',
+    'News': '新聞',
+    'Sports': '體育',
+  };
+
+  String _localizeTitle(String title) => _titleMap[title] ?? title;
 
   @override
   void initState() {
@@ -52,8 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  /// After watching, Continue watching shows where each video got to (unless focus is in it). Home starts over
-  /// when it's more than an hour old.
+  /// 觀看影片後，「繼續觀看」列會更新播放進度（除非焦點正停留在該列）。若首頁建立超過一小時則重新整理。
   void _onLibrary() {
     if (!mounted) return;
     if (DateTime.now().difference(_builtAt) > const Duration(hours: 1)) return _build();
@@ -62,7 +74,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => row.items = [for (final h in Library.instance.continueWatching().take(30)) h.video]);
   }
 
-  /// Signing in or out starts Home over with (or without) the account's recommendations.
+  /// 登入或登出後，重新載入首頁推薦內容。
   bool _signedIn = Account.instance.signedIn;
 
   void _onAccount() {
@@ -99,8 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Focuses the top row once it's known which row is on top: every row above it has loaded or failed. A lower row
-  /// that loads first waits, so focus never jumps up when a slower row (Recommended) arrives. The splash waits too.
+  /// 待上方所有列載入完成或失敗後，將遙控器焦點自動移至最頂端有內容的列，避免焦點跳動。
   void _focusTopRow() => WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!mounted) return;
     for (final r in _rows) {
@@ -108,7 +119,6 @@ class _HomeScreenState extends State<HomeScreen> {
       if (r.items.isEmpty) continue;
       Splash.done();
       final idle = KeyCounter.count == _keysAtBuild && !_rows.any((x) => x.focus.hasFocus);
-      // Not from under a dialog or the player opened over Home.
       final shown = TickerMode.valuesOf(context).enabled && ModalRoute.of(context)?.isCurrent != false;
       if (idle && shown) r.focus.requestFocus();
       return;
@@ -143,11 +153,11 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text("Couldn't load Home", style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500)),
+            const Text('無法載入首頁', style: TextStyle(fontSize: 40, fontWeight: FontWeight.w500)),
             const SizedBox(height: 16),
-            const Text('Check the TV is online, then try again.', style: TextStyle(fontSize: 26, color: Tv.text2)),
+            const Text('請確認電視已連線至網路後再試一次。', style: TextStyle(fontSize: 26, color: Tv.text2)),
             const SizedBox(height: 36),
-            TvButton(label: 'Try again', autofocus: true, onSelect: _build),
+            TvButton(label: '重試', autofocus: true, onSelect: _build),
           ],
         ),
       );
@@ -159,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
         for (final r in visible)
           TvRow(
             key: ObjectKey(r),
-            title: r.source.title,
+            title: _localizeTitle(r.source.title),
             items: r.items,
             loading: r.loading,
             focusNode: r.focus,
