@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-java@v5
         with:
@@ -22,22 +24,15 @@ jobs:
           flutter-version: '3.50.1'
           cache: true
 
-      - name: Fix watch.dart safely
-        working-directory: android
+      - name: Restore and Patch watch.dart
         run: |
-          curl -sL https://githubusercontent.com -o lib/screens/watch.dart
+          ORIG_COMMIT=$(git log --format=%H -- android/lib/screens/watch.dart | tail -n 1)
+          git checkout "$ORIG_COMMIT" -- android/lib/screens/watch.dart
           python3 -c '
-          p = "lib/screens/watch.dart"
+          p = "android/lib/screens/watch.dart"
           s = open(p).read()
-          old = """    if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {
-                _hideControls();
-                return KeyEventResult.handled;
-              }"""
-          new = """    if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {
-                _hideControls();
-                return KeyEventResult.handled;
-              }
-              if (k == LogicalKeyboardKey.arrowDown && _bar.hasFocus) {
+          target = "if (k == LogicalKeyboardKey.arrowUp && _bar.hasFocus) {"
+          patch = """if (k == LogicalKeyboardKey.arrowDown && _bar.hasFocus) {
                 _playButton.requestFocus();
                 return KeyEventResult.handled;
               }
@@ -46,14 +41,15 @@ jobs:
                   _bar.requestFocus();
                 }
                 return KeyEventResult.handled;
-              }"""
-          assert old in s, "Pattern not found"
-          s = s.replace(old, new, 1)
+              }
+              """ + target
+          assert target in s, "Target line not found"
+          s = s.replace(target, patch, 1)
           subs = [
               ("Resuming from ", "繼續播放位置 "),
-              ("Toast.show(\x27Skipped ${s.category.label.toLowerCase()}\x27)", "Toast.show(\x27已略過贊助片段\x27)"),
-              ("Toast.show(\"Couldn\x27t load captions\")", "Toast.show(\x27無法載入字幕\x27)"),
-              ("Toast.show(\x27No captions for this video\x27)", "Toast.show(\x27此影片沒有提供字幕\x27)"),
+              ("Skipped ${s.category.label.toLowerCase()}", "已略過贊助片段"),
+              ("Couldn\x27t load captions", "無法載入字幕"),
+              ("No captions for this video", "此影片沒有提供字幕"),
               ("title: \x27Captions\x27", "title: \x27字幕\x27"),
               ("PanelItem(\x27Off\x27", "PanelItem(\x27關閉\x27"),
               ("title: \x27Settings\x27", "title: \x27播放設定\x27"),
@@ -67,7 +63,7 @@ jobs:
               ("_PanelHeading(\x27Description\x27)", "_PanelHeading(\x27資訊欄\x27)"),
               ("[\x27No description\x27]", "[\x27無影片說明\x27]"),
               ("title: \x27Comments\x27", "title: \x27留言\x27"),
-              ("\"Couldn\x27t play this video. ", "\"無法播放此影片。"),
+              ("Couldn\x27t play this video. ", "無法播放此影片。"),
               (" subscribers\x27", " 位訂閱者\x27"),
               (" watching\x27", " 人正在觀看\x27"),
               ("live ? \x27LIVE\x27", "live ? \x27直播\x27"),
@@ -101,7 +97,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@://github.com"
           git add android/lib android/test
-          git diff --staged --quiet || (git commit -m "Fix watch.dart and format" && git push)
+          git diff --staged --quiet || (git commit -m "Restore and translate watch.dart" && git push)
 
       - name: Build APK
         working-directory: android
