@@ -140,8 +140,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PanelItem(
         '影片畫質',
         value: _label<Object>(_qualities, s['quality'] ?? 'auto'),
-        onSelect: () =>
-            _choose<Object>('影片畫質', _qualities, s['quality'] ?? 'auto', (v) => s.set('quality', v)),
+        onSelect: () => _choose<Object>('影片畫質', _qualities, s['quality'] ?? 'auto', (v) => s.set('quality', v)),
       ),
       PanelItem('自動播放下一部影片', value: onOff(s.autoplay), onSelect: () => s.set('autoplay', !s.autoplay)),
       PanelItem(
@@ -152,12 +151,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       PanelItem(
         '字幕語言',
         value: _label<String?>(_languages, s['captionLang'] as String?),
-        onSelect: () => _choose<String?>(
-          '字幕語言',
-          _languages,
-          s['captionLang'] as String?,
-          (v) => s.set('captionLang', v),
-        ),
+        onSelect: () =>
+            _choose<String?>('字幕語言', _languages, s['captionLang'] as String?, (v) => s.set('captionLang', v)),
       ),
       PanelItem(
         '播放速度',
@@ -214,7 +209,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         value: Updates.version,
         onSelect: _checkUpdates,
       ),
-      PanelItem('原始碼倉庫', value: 'github.com/${Updates.repo}'),
+      PanelItem('原始碼倉庫', value: '://github.com{Updates.repo}'),
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(Tv.pad, 120, Tv.pad, 400),
